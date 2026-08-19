@@ -9,34 +9,48 @@ import {
   validateIntegratedPipeline
 } from '@/lib/db';
 
-// GET /api/token?token=YOUR_TOKEN or GET /api/token (list all if admin)
+// GET /api/token -> Tarik semua data API (user, token, dayExpired, daysRemaining, status)
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const token = searchParams.get('token') || searchParams.get('key');
     const username = searchParams.get('username') || searchParams.get('user');
 
+    // Jika dipanggil dengan spesifik ?token=... atau ?username=...
     if (token || username) {
       const result = validateIntegratedPipeline({ userToken: token, username });
       const statusCode = result.success ? 200 : 401;
       return NextResponse.json(result, { status: statusCode });
     }
 
-    // List all tokens
-    const tokens = getAllKeys();
+    // Tarik semua data API (list semua user + token)
+    const rawTokens = getAllKeys();
+    const formattedData = rawTokens.map((item) => ({
+      user: item.username,
+      username: item.username,
+      token: item.token || item.key,
+      dayExpired: item.dayExpired || item.expiresAt,
+      daysRemaining: item.daysRemaining,
+      status: item.status,
+      alias: item.alias || '',
+      createdAt: item.createdAt
+    }));
+
     return NextResponse.json({
+      status: 'SUCCESS',
       success: true,
-      data: tokens
+      total: formattedData.length,
+      data: formattedData
     });
   } catch (err) {
     return NextResponse.json(
-      { success: false, status: 'FAILED', message: err.message },
+      { status: 'FAILED', success: false, message: err.message },
       { status: 500 }
     );
   }
 }
 
-// POST /api/token -> Create User + Token + Day Expired (For .EXE / Remote Panels)
+// POST /api/token -> Create User + Token + Day Expired
 export async function POST(request) {
   try {
     let body = {};
@@ -51,7 +65,6 @@ export async function POST(request) {
     const alias = body.alias || body.note || searchParams.get('alias');
     const durationDays = body.durationDays || body.days || searchParams.get('durationDays') || 30;
 
-    // If request contains token to validate instead of creating
     if (body.action === 'validate' || (!username && body.token)) {
       const token = body.token || body.key;
       const result = validateIntegratedPipeline({ userToken: token });
@@ -61,7 +74,7 @@ export async function POST(request) {
 
     if (!username || username.trim() === '') {
       return NextResponse.json(
-        { success: false, status: 'FAILED', message: 'Username / Nama User wajib diisi' },
+        { status: 'FAILED', success: false, message: 'Username / Nama User wajib diisi' },
         { status: 400 }
       );
     }
@@ -79,22 +92,22 @@ export async function POST(request) {
     });
   } catch (err) {
     return NextResponse.json(
-      { success: false, status: 'FAILED', message: err.message },
+      { status: 'FAILED', success: false, message: err.message },
       { status: 500 }
     );
   }
 }
 
-// PUT /api/token -> Tambah Hari (Add Days) or Toggle Status
+// PUT /api/token -> Tambah Hari (Add Days)
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { token, id, action, days, status } = body;
+    const { token, id, action, days } = body;
     const targetToken = token || id;
 
     if (!targetToken) {
       return NextResponse.json(
-        { success: false, status: 'FAILED', message: 'Token wajib diisi' },
+        { status: 'FAILED', success: false, message: 'Token wajib diisi' },
         { status: 400 }
       );
     }
@@ -114,11 +127,11 @@ export async function PUT(request) {
     }
 
     if (action === 'toggle_status') {
-      const updated = updateKeyStatus(targetToken, status);
+      const updated = updateKeyStatus(targetToken, body.status);
       return NextResponse.json({
         status: 'SUCCESS',
         success: true,
-        message: `Status token diubah menjadi ${status}`,
+        message: `Status token diubah menjadi ${body.status}`,
         user: updated.user,
         token: updated.token,
         dayExpired: updated.dayExpired
@@ -138,12 +151,12 @@ export async function PUT(request) {
     }
 
     return NextResponse.json(
-      { success: false, status: 'FAILED', message: 'Action tidak dikenal' },
+      { status: 'FAILED', success: false, message: 'Action tidak dikenal' },
       { status: 400 }
     );
   } catch (err) {
     return NextResponse.json(
-      { success: false, status: 'FAILED', message: err.message },
+      { status: 'FAILED', success: false, message: err.message },
       { status: 500 }
     );
   }
@@ -157,7 +170,7 @@ export async function DELETE(request) {
 
     if (!token) {
       return NextResponse.json(
-        { success: false, status: 'FAILED', message: 'Token wajib diisi' },
+        { status: 'FAILED', success: false, message: 'Token wajib diisi' },
         { status: 400 }
       );
     }
@@ -171,7 +184,7 @@ export async function DELETE(request) {
     });
   } catch (err) {
     return NextResponse.json(
-      { success: false, status: 'FAILED', message: err.message },
+      { status: 'FAILED', success: false, message: err.message },
       { status: 500 }
     );
   }
