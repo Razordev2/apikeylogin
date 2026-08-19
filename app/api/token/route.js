@@ -3,27 +3,27 @@ import {
   getAllKeys,
   createKey,
   addDaysToKey,
+  resetKeyHwid,
   updateKeyStatus,
   regenerateApiKey,
   deleteKey,
   validateIntegratedPipeline
 } from '@/lib/db';
 
-// GET /api/token -> Tarik semua data API (user, token, dayExpired, daysRemaining, status)
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const token = searchParams.get('token') || searchParams.get('key');
     const username = searchParams.get('username') || searchParams.get('user');
+    const hwid = searchParams.get('hwid') || searchParams.get('deviceId');
 
-    // Jika dipanggil dengan spesifik ?token=... atau ?username=...
     if (token || username) {
-      const result = validateIntegratedPipeline({ userToken: token, username });
+      const result = validateIntegratedPipeline({ userToken: token, username, hwid });
       const statusCode = result.success ? 200 : 401;
       return NextResponse.json(result, { status: statusCode });
     }
 
-    // Tarik semua data API (list semua user + token)
+    // Tarik semua data API
     const rawTokens = getAllKeys();
     const formattedData = rawTokens.map((item) => ({
       user: item.username,
@@ -33,6 +33,8 @@ export async function GET(request) {
       daysRemaining: item.daysRemaining,
       status: item.status,
       alias: item.alias || '',
+      maxDevices: item.maxDevices !== undefined ? item.maxDevices : 1,
+      boundDevices: item.boundDevices || [],
       createdAt: item.createdAt
     }));
 
@@ -50,7 +52,6 @@ export async function GET(request) {
   }
 }
 
-// POST /api/token -> Create User + Token + Day Expired
 export async function POST(request) {
   try {
     let body = {};
@@ -64,10 +65,12 @@ export async function POST(request) {
     const username = body.username || body.user || searchParams.get('username');
     const alias = body.alias || body.note || searchParams.get('alias');
     const durationDays = body.durationDays || body.days || searchParams.get('durationDays') || 30;
+    const maxDevices = body.maxDevices !== undefined ? body.maxDevices : (searchParams.get('maxDevices') || 1);
+    const hwid = body.hwid || body.deviceId || searchParams.get('hwid');
 
     if (body.action === 'validate' || (!username && body.token)) {
       const token = body.token || body.key;
-      const result = validateIntegratedPipeline({ userToken: token });
+      const result = validateIntegratedPipeline({ userToken: token, hwid });
       const statusCode = result.success ? 200 : 401;
       return NextResponse.json(result, { status: statusCode });
     }
@@ -79,7 +82,7 @@ export async function POST(request) {
       );
     }
 
-    const record = createKey({ username, alias, durationDays });
+    const record = createKey({ username, alias, durationDays, maxDevices });
 
     return NextResponse.json({
       status: 'SUCCESS',
@@ -88,7 +91,9 @@ export async function POST(request) {
       user: record.user,
       token: record.token,
       dayExpired: record.dayExpired,
-      daysRemaining: record.daysRemaining
+      daysRemaining: record.daysRemaining,
+      maxDevices: record.maxDevices,
+      boundDevices: record.boundDevices
     });
   } catch (err) {
     return NextResponse.json(
@@ -98,7 +103,6 @@ export async function POST(request) {
   }
 }
 
-// PUT /api/token -> Tambah Hari (Add Days)
 export async function PUT(request) {
   try {
     const body = await request.json();
@@ -123,6 +127,18 @@ export async function PUT(request) {
         dayExpired: updated.dayExpired,
         daysRemaining: updated.daysRemaining,
         tambahanDay: updated.tambahanDay
+      });
+    }
+
+    if (action === 'reset_hwid' || action === 'reset_device') {
+      const updated = resetKeyHwid(targetToken);
+      return NextResponse.json({
+        status: 'SUCCESS',
+        success: true,
+        message: 'Perangkat (HWID/Device) terikat berhasil di-reset!',
+        user: updated.user,
+        token: updated.token,
+        boundDevices: updated.boundDevices
       });
     }
 
@@ -162,7 +178,6 @@ export async function PUT(request) {
   }
 }
 
-// DELETE /api/token?token=YOUR_TOKEN
 export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);

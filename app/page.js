@@ -22,7 +22,9 @@ import {
   Lock,
   CalendarPlus,
   Info,
-  Monitor
+  Monitor,
+  Smartphone,
+  RotateCcw
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -53,6 +55,7 @@ export default function AdminDashboard() {
   const [formUsername, setFormUsername] = useState('');
   const [formAlias, setFormAlias] = useState('');
   const [formDurationDays, setFormDurationDays] = useState(30);
+  const [formMaxDevices, setFormMaxDevices] = useState(1);
 
   // Form State - Add Days
   const [extraDaysToAdd, setExtraDaysToAdd] = useState(30);
@@ -63,6 +66,7 @@ export default function AdminDashboard() {
 
   // Interactive Validator State
   const [testKeyValue, setTestKeyValue] = useState('');
+  const [testHwidValue, setTestHwidValue] = useState('HWID-MY-PC-12345');
   const [testResult, setTestResult] = useState(null);
   const [isTesting, setIsTesting] = useState(false);
 
@@ -120,7 +124,7 @@ export default function AdminDashboard() {
       const res = await fetch('/api/token');
       const result = await res.json();
       if (result.success) {
-        setKeysData(result.data);
+        setKeysData(result.data || []);
         const dataList = result.data || [];
         setStats({
           total: dataList.length,
@@ -150,7 +154,8 @@ export default function AdminDashboard() {
         body: JSON.stringify({
           username: formUsername,
           alias: formAlias,
-          durationDays: formDurationDays
+          durationDays: formDurationDays,
+          maxDevices: formMaxDevices
         })
       });
       const result = await res.json();
@@ -161,6 +166,7 @@ export default function AdminDashboard() {
         setFormUsername('');
         setFormAlias('');
         setFormDurationDays(30);
+        setFormMaxDevices(1);
         fetchKeys();
 
         confetti({
@@ -200,6 +206,31 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       showToast('Gagal menambah hari masa aktif', 'error');
+    }
+  };
+
+  const handleResetHwid = async (keyToken) => {
+    if (!confirm('Reset ikatan HWID/Device untuk token ini? User akan bisa login kembali dari device baru.')) {
+      return;
+    }
+    try {
+      const res = await fetch('/api/token', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: keyToken,
+          action: 'reset_hwid'
+        })
+      });
+      const result = await res.json();
+      if (result.success) {
+        showToast(result.message, 'success');
+        fetchKeys();
+      } else {
+        showToast(result.message, 'error');
+      }
+    } catch (err) {
+      showToast('Gagal mereset ikatan device HWID', 'error');
     }
   };
 
@@ -286,7 +317,7 @@ export default function AdminDashboard() {
     }
     setIsTesting(true);
     try {
-      const res = await fetch(`/api/token?token=${encodeURIComponent(testKeyValue.trim())}`);
+      const res = await fetch(`/api/token?token=${encodeURIComponent(testKeyValue.trim())}&hwid=${encodeURIComponent(testHwidValue.trim())}`);
       const data = await res.json();
       setTestResult({ status: res.status, data });
     } catch (err) {
@@ -298,11 +329,11 @@ export default function AdminDashboard() {
 
   // Filter keys
   const filteredKeys = keysData.filter((item) => {
-    const itemKey = item.token || item.key || '';
+    const itemToken = item.token || item.key || '';
     const matchesSearch =
       item.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      itemKey.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.alias.toLowerCase().includes(searchQuery.toLowerCase());
+      itemToken.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.alias && item.alias.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesStatus =
       statusFilter === 'all' || item.status === statusFilter;
@@ -392,10 +423,10 @@ export default function AdminDashboard() {
           <div>
             <div className="brand-title">
               <span>TokenVault (.EXE App)</span>
-              <span className="brand-badge">Vercel API</span>
+              <span className="brand-badge">Device Lock Ready</span>
             </div>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Server License & Token Verification System untuk File .EXE
+              Server License & Device-Lock HWID Verification System
             </div>
           </div>
         </div>
@@ -471,7 +502,7 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab('tester')}
           >
             <Zap size={16} />
-            <span>Uji Token (.EXE Tester)</span>
+            <span>Uji Token & HWID (.EXE Tester)</span>
           </button>
 
           <button
@@ -543,9 +574,9 @@ export default function AdminDashboard() {
                   <th>User / Pemilik</th>
                   <th>TOKEN</th>
                   <th>Status</th>
+                  <th>Device Terikat (HWID Lock)</th>
                   <th>Sisa Masa Aktif</th>
-                  <th>Tanggal Expired (Day Expired)</th>
-                  <th>Total Request</th>
+                  <th>Day Expired</th>
                   <th style={{ textAlign: 'right' }}>Aksi / Perpanjang</th>
                 </tr>
               </thead>
@@ -566,6 +597,8 @@ export default function AdminDashboard() {
                   filteredKeys.map((item) => {
                     const itemToken = item.token || item.key || '';
                     const isRev = item.status === 'revoked';
+                    const boundList = item.boundDevices || [];
+                    const maxDev = item.maxDevices !== undefined ? item.maxDevices : 1;
 
                     return (
                       <tr key={item.id}>
@@ -606,6 +639,24 @@ export default function AdminDashboard() {
                         </td>
 
                         <td>
+                          <div style={{ fontSize: '0.82rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-main)', fontWeight: 600 }}>
+                              <Smartphone size={14} color="var(--accent-cyan)" />
+                              <span>{boundList.length} / {maxDev === 0 ? '∞' : maxDev} Device</span>
+                            </div>
+                            {boundList.length > 0 ? (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-code)', marginTop: '2px' }}>
+                                {boundList[0]} {boundList.length > 1 ? `(+${boundList.length - 1})` : ''}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontStyle: 'italic' }}>
+                                Belum ada device terikat
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        <td>
                           <div className={`days-pill ${
                             item.daysRemaining <= 0
                               ? 'expired'
@@ -626,12 +677,8 @@ export default function AdminDashboard() {
                           })}
                         </td>
 
-                        <td style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-                          {item.totalRequests || 0} req
-                        </td>
-
                         <td>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
                             <button
                               className="btn btn-amber btn-sm"
                               onClick={() => {
@@ -641,8 +688,18 @@ export default function AdminDashboard() {
                               }}
                               title="Tambah Hari / Perpanjang Masa Aktif"
                             >
-                              <CalendarPlus size={15} />
+                              <CalendarPlus size={14} />
                               <span>+ Hari</span>
+                            </button>
+
+                            {/* Reset HWID Button */}
+                            <button
+                              className="btn btn-secondary btn-sm btn-icon-only"
+                              onClick={() => handleResetHwid(itemToken)}
+                              title="Reset Ikatan Device / HWID"
+                              style={{ color: '#06B6D4' }}
+                            >
+                              <RotateCcw size={14} />
                             </button>
 
                             <button
@@ -692,6 +749,8 @@ export default function AdminDashboard() {
               filteredKeys.map((item) => {
                 const itemToken = item.token || item.key || '';
                 const isRev = item.status === 'revoked';
+                const boundList = item.boundDevices || [];
+                const maxDev = item.maxDevices !== undefined ? item.maxDevices : 1;
 
                 return (
                   <div key={item.id} className="mobile-key-card">
@@ -738,9 +797,9 @@ export default function AdminDashboard() {
                         </span>
                       </div>
                       <div>
-                        <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', display: 'block' }}>Expired Date</span>
-                        <span style={{ color: 'var(--text-muted)' }}>
-                          {new Date(item.expiresAt || item.dayExpired).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })}
+                        <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', display: 'block' }}>Device HWID</span>
+                        <span style={{ color: 'var(--accent-cyan)', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {boundList.length} / {maxDev === 0 ? '∞' : maxDev} Device
                         </span>
                       </div>
                     </div>
@@ -756,6 +815,15 @@ export default function AdminDashboard() {
                       >
                         <CalendarPlus size={14} />
                         <span>+ Hari</span>
+                      </button>
+
+                      <button
+                        className="btn btn-secondary btn-sm btn-icon-only"
+                        onClick={() => handleResetHwid(itemToken)}
+                        title="Reset Device HWID"
+                        style={{ color: '#06B6D4' }}
+                      >
+                        <RotateCcw size={14} />
                       </button>
 
                       <button
@@ -790,37 +858,53 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* TAB 2: INTERACTIVE TOKEN TESTER */}
+      {/* TAB 2: INTERACTIVE TOKEN & HWID TESTER */}
       {activeTab === 'tester' && (
         <div className="glass-panel" style={{ padding: '24px' }}>
           <div style={{ marginBottom: '20px' }}>
             <h2 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Zap color="var(--accent-cyan)" size={20} />
-              Uji Token Aplikasi .EXE (`/api/token?token=...`)
+              Uji Validasi Token & Device HWID Lock (`/api/token`)
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', marginTop: '4px' }}>
-              Simulasi pengetesan Token langsung seperti yang akan dilakukan oleh file program `.EXE` Anda.
+              Uji coba validasi token sekaligus pengujian ikatan perangkat (HWID Lock) seperti pada file `.EXE` Anda.
             </p>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
-            <input
-              type="text"
-              className="form-control"
-              placeholder="Masukkan String TOKEN (contoh: sk_live_...)"
-              value={testKeyValue}
-              onChange={(e) => setTestKeyValue(e.target.value)}
-              style={{ fontFamily: 'var(--font-code)' }}
-            />
+            <div>
+              <label className="form-label">String TOKEN</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Masukkan String TOKEN (contoh: tok_active_...)"
+                value={testKeyValue}
+                onChange={(e) => setTestKeyValue(e.target.value)}
+                style={{ fontFamily: 'var(--font-code)' }}
+              />
+            </div>
+
+            <div>
+              <label className="form-label">Simulasi Device HWID (Opsional Lock Device)</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Contoh: HWID-PC-USER-12345"
+                value={testHwidValue}
+                onChange={(e) => setTestHwidValue(e.target.value)}
+                style={{ fontFamily: 'var(--font-code)' }}
+              />
+            </div>
+
             <button className="btn btn-primary" onClick={runApiTest} disabled={isTesting}>
-              {isTesting ? 'Menguji Token .EXE...' : 'Test Validasi Token (.EXE API)'}
+              {isTesting ? 'Menguji Token & HWID...' : 'Jalankan Test Validasi & HWID Lock'}
             </button>
           </div>
 
           {keysData.length > 0 && (
             <div style={{ marginBottom: '24px' }}>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
-                Pilih dari daftar token sampel:
+                Pilih token untuk diuji:
               </span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {keysData.slice(0, 4).map((k) => (
@@ -839,13 +923,13 @@ export default function AdminDashboard() {
           {testResult && (
             <div style={{ marginTop: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.84rem', fontWeight: 600 }}>Status HTTP Response:</span>
+                <span style={{ fontSize: '0.84rem', fontWeight: 600 }}>Status Response API:</span>
                 <span style={{
                   fontSize: '0.84rem',
                   fontWeight: 700,
                   color: testResult.status === 200 ? 'var(--accent-emerald)' : 'var(--accent-rose)'
                 }}>
-                  {testResult.status} {testResult.status === 200 ? 'SUCCESS (Token Active)' : 'FAILED'}
+                  {testResult.status} {testResult.status === 200 ? 'SUCCESS' : 'FAILED / DEVICE LOCKED'}
                 </span>
               </div>
               <pre className="code-block">
@@ -862,10 +946,10 @@ export default function AdminDashboard() {
           <div style={{ marginBottom: '20px' }}>
             <h2 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Code2 color="var(--accent-primary)" size={20} />
-              Panduan Integrasi Token ke Aplikasi / File .EXE
+              Panduan Integrasi Token + HWID Lock ke File .EXE
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', marginTop: '4px' }}>
-              Endpoint API terpusat untuk aplikasi file <code>.EXE</code> (C#, C++, Python, cURL, PHP).
+              Integrasikan token & penguncian 1 Device (HWID) langsung dari kodingan aplikasi <code>.EXE</code> Anda.
             </p>
           </div>
 
@@ -875,63 +959,68 @@ export default function AdminDashboard() {
                 className={`tab-button ${selectedLanguage === 'csharp' ? 'active' : ''}`}
                 onClick={() => setSelectedLanguage('csharp')}
               >
-                C# (.NET / WinForms / WPF)
+                C# (.NET / WinForms)
               </button>
               <button
                 className={`tab-button ${selectedLanguage === 'python' ? 'active' : ''}`}
                 onClick={() => setSelectedLanguage('python')}
               >
-                Python (.EXE / PyInstaller)
+                Python (.EXE)
               </button>
               <button
                 className={`tab-button ${selectedLanguage === 'curl' ? 'active' : ''}`}
                 onClick={() => setSelectedLanguage('curl')}
               >
-                cURL / HTTP Request
-              </button>
-              <button
-                className={`tab-button ${selectedLanguage === 'javascript' ? 'active' : ''}`}
-                onClick={() => setSelectedLanguage('javascript')}
-              >
-                Node.js / JS
+                cURL / REST API
               </button>
             </div>
           </div>
 
           {selectedLanguage === 'csharp' && (
             <pre className="code-block">
-{`// 🖥️ INTEGRASI FILE .EXE MENGGUNAKAN C# (.NET / WinForms / Console App)
+{`// 🖥️ INTEGRASI C# (.NET) - TOKEN + HWID DEVICE LOCK
 using System;
+using System.Management; // Untuk ambil HWID unik PC
 using System.Net.Http;
-using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
-public class TokenVerifier
+public class ExeSecurityManager
 {
     private static readonly HttpClient client = new HttpClient();
 
-    // 1. VALIDATE TOKEN SAAT PROGRAM .EXE DIBUKA
-    public static async Task<bool> ValidateTokenInExe(string userToken)
+    // Dapatkan HWID Unik Perangkat Komputer/PC
+    public static string GetSystemHwid()
     {
-        string url = "https://domain-anda.vercel.app/api/token?token=" + userToken;
-        HttpResponseMessage response = await client.GetAsync(url);
-        string jsonResult = await response.Content.ReadAsStringAsync();
+        string processorId = "";
+        ManagementClass mc = new ManagementClass("win32_processor");
+        ManagementObjectCollection moc = mc.GetInstances();
+        foreach (ManagementObject mo in moc)
+        {
+            processorId = mo.Properties["processorid"].Value.ToString();
+            break;
+        }
+        return "HWID-" + processorId;
+    }
+
+    // Validasi Token & Binding HWID Perangkat saat .EXE dijalankan:
+    public static async Task<bool> ValidateExeSession(string userToken)
+    {
+        string hwid = GetSystemHwid();
+        string url = $"https://apikeylogin.vercel.app/api/token?token={userToken}&hwid={hwid}";
         
-        JObject json = JObject.Parse(jsonResult);
+        HttpResponseMessage response = await client.GetAsync(url);
+        string jsonText = await response.Content.ReadAsStringAsync();
+        JObject json = JObject.Parse(jsonText);
 
         if ((bool)json["success"])
         {
-            string user = (string)json["user"];
-            int daysLeft = (int)json["daysRemaining"];
-            string exp = (string)json["dayExpired"];
-            
-            Console.WriteLine($"✅ LOGIN SUCCESS! User: {user}, Sisa: {daysLeft} Hari, Expired: {exp}");
+            Console.WriteLine($"✅ LOGIN ACCESSED! User: {json["user"]}, Sisa: {json["daysRemaining"]} Hari");
             return true;
         }
         else
         {
-            Console.WriteLine($"❌ LOGIN GAGAL: {json["message"]}");
+            Console.WriteLine($"❌ ACCESS DENIED: {json["message"]}");
             return false;
         }
     }
@@ -941,72 +1030,44 @@ public class TokenVerifier
 
           {selectedLanguage === 'python' && (
             <pre className="code-block">
-{`# 🖥️ INTEGRASI FILE .EXE MENGGUNAKAN PYTHON (Di-compile dengan PyInstaller / Nuitka)
+{`# 🖥️ INTEGRASI PYTHON (.EXE) - TOKEN + HWID LOCK
 import requests
+import uuid
 
-# 1. CREATE USER BARU + TOKEN + DAY EXPIRED
-def create_new_user(username, duration_days=30):
-    url = "https://domain-anda.vercel.app/api/token"
-    payload = {
-        "username": username,
-        "durationDays": duration_days
-    }
-    res = requests.post(url, json=payload).json()
-    print("User Created:", res["user"], "Token:", res["token"], "Expired:", res["dayExpired"])
-    return res["token"]
+# Dapatkan Unique HWID Komputer
+def get_device_hwid():
+    return f"HWID-{hex(uuid.getnode())}"
 
-# 2. VALIDATE TOKEN DI APLIKASI .EXE
-def check_exe_token(token_string):
-    url = f"https://domain-anda.vercel.app/api/token?token={token_string}"
+# Validasi Token & Kunci Perangkat
+def validate_exe_token(user_token):
+    hwid = get_device_hwid()
+    url = f"https://apikeylogin.vercel.app/api/token?token={user_token}&hwid={hwid}"
+    
     res = requests.get(url).json()
 
     if res.get("success"):
-        print(f"✅ SUCCESS! User: {res['user']} | Sisa Hari: {res['daysRemaining']} Hari")
+        print(f"✅ LOGIN SUCCESS! User: {res['user']} | Sisa Hari: {res['daysRemaining']} Hari")
         return True
     else:
-        print(f"❌ GAGAL: {res.get('message')}")
+        print(f"❌ DENIED: {res.get('message')}")
         return False`}
             </pre>
           )}
 
           {selectedLanguage === 'curl' && (
             <pre className="code-block">
-{`# 🖥️ ENDPOINT DEDIKASI UNTUK INTEGRASI .EXE
-
-# 1. CREATE USER + TOKEN + DAY EXPIRED:
-curl -X POST "https://domain-anda.vercel.app/api/token" \\
+{`# 1. CREATE USER + TOKEN + MAX DEVICE LOCK (Default 1 Device):
+curl -X POST "https://apikeylogin.vercel.app/api/token" \\
   -H "Content-Type: application/json" \\
-  -d '{"username": "budi_user", "durationDays": 30}'
+  -d '{"username": "budi_user", "durationDays": 30, "maxDevices": 1}'
 
-# 2. TAMBAHAN DAY (+30 HARI):
-curl -X PUT "https://domain-anda.vercel.app/api/token" \\
+# 2. VALIDASI TOKEN DENGAN HWID DEVICE LOG:
+curl -X GET "https://apikeylogin.vercel.app/api/token?token=tok_active_...&hwid=HWID-PC-USER-001"
+
+# 3. RESET IKATAN DEVICE HWID (JIKA USER GANTI PC):
+curl -X PUT "https://apikeylogin.vercel.app/api/token" \\
   -H "Content-Type: application/json" \\
-  -d '{"token": "sk_live_...", "action": "add_days", "days": 30}'
-
-# 3. VALIDASI TOKEN SAAT .EXE DIBUKA:
-curl -X GET "https://domain-anda.vercel.app/api/token?token=sk_live_..."`}
-            </pre>
-          )}
-
-          {selectedLanguage === 'javascript' && (
-            <pre className="code-block">
-{`// 🖥️ INTEGRASI API TOKEN (JAVASCRIPT / ELECTRON .EXE)
-
-// Create User + Token
-const createToken = async (username, days = 30) => {
-  const res = await fetch("https://domain-anda.vercel.app/api/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, durationDays: days })
-  });
-  return await res.json();
-};
-
-// Validate Token in .exe
-const validateToken = async (token) => {
-  const res = await fetch(\`https://domain-anda.vercel.app/api/token?token=\${token}\`);
-  return await res.json();
-};`}
+  -d '{"token": "tok_active_...", "action": "reset_hwid"}'`}
             </pre>
           )}
         </div>
@@ -1070,6 +1131,24 @@ const validateToken = async (token) => {
                       {d} Hari
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Opsional Max Device Limit */}
+              <div className="form-group">
+                <label className="form-label">Batas Perangkat (Max Device HWID Lock) - Opsional</label>
+                <select
+                  className="form-control"
+                  value={formMaxDevices}
+                  onChange={(e) => setFormMaxDevices(Number(e.target.value))}
+                >
+                  <option value={1}>1 Device (Default - Terikat pada 1 Komputer/HWID)</option>
+                  <option value={2}>2 Devices</option>
+                  <option value={5}>5 Devices</option>
+                  <option value={0}>Bebas / Tanpa Batas (Unlimited Devices)</option>
+                </select>
+                <div className="form-hint">
+                  Perangkat (HWID) akan otomatis terikat saat user pertama kali login dari aplikasi .EXE.
                 </div>
               </div>
 
@@ -1194,7 +1273,7 @@ const validateToken = async (token) => {
             </div>
 
             <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textAlign: 'center', marginBottom: '18px' }}>
-              Masa Aktif: <strong>{newlyCreatedKeyRecord.daysRemaining} Hari</strong>
+              Masa Aktif: <strong>{newlyCreatedKeyRecord.daysRemaining} Hari</strong> | Max Devices: <strong>{newlyCreatedKeyRecord.maxDevices || 1} Device</strong>
             </div>
 
             <button
