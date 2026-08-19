@@ -1,0 +1,41 @@
+[
+  {
+    "id": "key_1",
+    "username": "alex_developer",
+    "key": "tok_active_9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c",
+    "token": "tok_active_9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c",
+    "alias": "Web Admin Panel External",
+    "createdAt": "2026-08-14T13:14:39.000Z",
+    "expiresAt": "2026-09-13T13:14:39.000Z",
+    "dayExpired": "2026-09-13T13:14:39.000Z",
+    "status": "active",
+    "totalRequests": 142,
+    "lastUsedAt": "2026-08-19T11:14:39.000Z"
+  },
+  {
+    "id": "key_2",
+    "username": "budi_santoso",
+    "key": "tok_active_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+    "token": "tok_active_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+    "alias": "Panel Bot Admin",
+    "createdAt": "2026-07-10T13:14:39.000Z",
+    "expiresAt": "2026-08-09T13:14:39.000Z",
+    "dayExpired": "2026-08-09T13:14:39.000Z",
+    "status": "expired",
+    "totalRequests": 890,
+    "lastUsedAt": "2026-08-08T13:14:39.000Z"
+  },
+  {
+    "id": "key_3",
+    "username": "citra_designer",
+    "key": "tok_active_7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+    "token": "tok_active_7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+    "alias": "Client Panel App",
+    "createdAt": "2026-08-17T13:14:39.000Z",
+    "expiresAt": "2026-08-24T13:14:39.000Z",
+    "dayExpired": "2026-08-24T13:14:39.000Z",
+    "status": "active",
+    "totalRequests": 18,
+    "lastUsedAt": "2026-08-19T12:59:39.000Z"
+  }
+]
